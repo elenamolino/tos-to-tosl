@@ -93,6 +93,10 @@ def main():
     # Pipeline tuning
     parser.add_argument("--max-workers", type=int, default=4, help="Concurrent workers per phase (default: 4)")
     parser.add_argument("--max-repair-rounds", type=int, default=3, help="Max self-repair iterations (default: 3)")
+    parser.add_argument(
+        "--skip-phase1", action="store_true",
+        help="Skip Phase 1 (metadata extraction) and generate Turtle directly from unclassified clauses.",
+    )
 
     args = parser.parse_args()
 
@@ -129,6 +133,7 @@ def main():
         output_dir=args.output,
         max_workers=args.max_workers,
         max_repair_rounds=args.max_repair_rounds,
+        run_phase1=not args.skip_phase1,
     )
 
     conforming = sum(1 for t in result.turtle_files if t.final_report.conforms)

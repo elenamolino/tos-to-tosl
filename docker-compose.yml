@@ -1,0 +1,24 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: tos-to-odrl-mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build: .
+    container_name: tos-to-odrl-backend
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DB: tos_to_odrl
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+
+volumes:
+  mongo_data:

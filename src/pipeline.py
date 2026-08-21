@@ -23,15 +23,20 @@ def run(
     eval_model=None,
     embed_model: str = "text-embedding-3-small",
     run_evaluation: bool = True,
+    run_phase1: bool = True,
 ) -> PipelineResult:
     out = Path(output_dir) if output_dir else None
 
     logger.info("=== Step 0: Clause splitting ===")
     split_contract = step0.split_clauses(contract, model)
 
-    logger.info("=== Phase 1: Metadata extraction (%d clauses) ===", len(split_contract.clauses))
-    metadata_list = phase1.extract_metadata(split_contract, model, max_workers=max_workers)
-    logger.info("Phase 1 complete: %d/%d clauses extracted.", len(metadata_list), len(split_contract.clauses))
+    if run_phase1:
+        logger.info("=== Phase 1: Metadata extraction (%d clauses) ===", len(split_contract.clauses))
+        metadata_list = phase1.extract_metadata(split_contract, model, max_workers=max_workers)
+        logger.info("Phase 1 complete: %d/%d clauses extracted.", len(metadata_list), len(split_contract.clauses))
+    else:
+        logger.info("=== Phase 1: skipped ===")
+        metadata_list = phase1.placeholder_metadata(split_contract)
     if out:
         save_json([m.model_dump() for m in metadata_list], out / "phase1" / "metadata.json")
 

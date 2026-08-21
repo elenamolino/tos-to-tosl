@@ -21,6 +21,25 @@ class _LLMResult(BaseModel):
     asset: str
 
 
+def placeholder_metadata(contract: Contract) -> list[ClauseMetadata]:
+    """Build metadata with default values, skipping LLM classification.
+
+    Used when phase 1 is disabled — phase 2 still needs a ClauseMetadata per
+    clause, so unclassified fields fall back to "other"/"unspecified".
+    """
+    return [
+        ClauseMetadata(
+            clause_id=clause.id,
+            clause_text=clause.text,
+            type="other",
+            party="unspecified",
+            action="unspecified",
+            asset="unspecified",
+        )
+        for clause in contract.clauses
+    ]
+
+
 def extract_metadata(contract: Contract, model: BaseChatModel, max_workers: int = 4) -> list[ClauseMetadata]:
     chain = PHASE1_PROMPT.partial(actions_list=_ACTIONS_LIST) | model.with_structured_output(_LLMResult)
     results: list[ClauseMetadata | None] = [None] * len(contract.clauses)

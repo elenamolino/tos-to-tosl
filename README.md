@@ -1,4 +1,4 @@
-## tos-to-odrl — Automated Terms of Service to ODRL Pipeline
+## tos-to-odrl — Automated Terms of Service to TOSL Pipeline
 
 Usage examples:
 - Standard OpenAI (reads OPENAI_API_KEY from .env):
