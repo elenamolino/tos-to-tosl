@@ -13,6 +13,13 @@ class JobStatusResponse(BaseModel):
     steps:    dict[str, dict]
 
 
+class ModelPreset(BaseModel):
+    id:       str
+    label:    str
+    model:    str
+    base_url: str
+
+
 class DeonticEntryOut(BaseModel):
     id:       str
     actions:  list[str]

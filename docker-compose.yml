@@ -8,7 +8,9 @@ services:
       - mongo_data:/data/db
 
   backend:
-    build: .
+    # Published from this repo via .github/workflows/publish.yml. Use
+    # `build: .` instead if you're iterating on backend/src code locally.
+    image: ghcr.io/elenamolino/tos-to-odrl:latest
     container_name: tos-to-odrl-backend
     ports:
       - "8000:8000"
@@ -19,6 +21,17 @@ services:
       - .env
     depends_on:
       - mongodb
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: tos-to-odrl-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
 
 volumes:
   mongo_data:

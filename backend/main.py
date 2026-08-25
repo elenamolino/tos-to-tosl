@@ -12,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backend.jobs import create_job, get_job, list_jobs, run_pipeline_background
-from backend.schemas import AggregateStats, ClauseReportItem, DeonticEntryOut, JobListItem, JobReportResponse, JobStatusResponse
+from backend.schemas import AggregateStats, ClauseReportItem, DeonticEntryOut, JobListItem, JobReportResponse, JobStatusResponse, ModelPreset
+from src.config import DEFAULT_MODEL, DEFAULT_BASE_URL, MODEL_PRESETS
 
 _PROJECT_ROOT     = Path(__file__).parent.parent
 _DEFAULT_ONTOLOGY  = _PROJECT_ROOT / "metamodel" / "tosl_odrl_simplified.ttl"
@@ -26,6 +27,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── GET /api/models ────────────────────────────────────────────────────────────
+
+@app.get("/api/models", response_model=list[ModelPreset])
+def list_models():
+    return MODEL_PRESETS
 
 
 # ── GET /api/jobs ──────────────────────────────────────────────────────────────
@@ -57,8 +65,8 @@ async def create_analysis_job(
     provider:         str = Form("Unknown"),
     title:            str = Form(""),
     date:             str = Form("Unknown"),
-    model:            str = Form("gpt-4.1-mini"),
-    base_url:         str = Form(""),
+    model:            str = Form(DEFAULT_MODEL),
+    base_url:         str = Form(DEFAULT_BASE_URL),
     api_key:          str = Form(""),
     max_workers:       int  = Form(4),
     max_repair_rounds: int  = Form(3),

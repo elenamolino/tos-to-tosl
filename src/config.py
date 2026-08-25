@@ -2,9 +2,38 @@
 # LLM
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "gpt-4.1-mini"
+HF_BASE_URL = "https://router.huggingface.co/v1"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL = "qwen/qwen3-30b-a3b-instruct-2507"
+DEFAULT_BASE_URL = OPENROUTER_BASE_URL
 DEFAULT_TEMPERATURE = 0
 MAX_REPAIR_ROUNDS = 3
+
+# Curated list of models the UI lets users pick between. "base_url": "" means
+# the plain OpenAI API; anything else is routed through that OpenAI-compatible
+# endpoint. Add entries here to make a new model selectable from the frontend.
+# The first entry is what the frontend pre-selects (matches DEFAULT_MODEL).
+#
+# Only models CONFIRMED WORKING end-to-end against the real Phase 2 prompt
+# (long ontology + guidelines context, ~14.5k tokens) are listed here.
+#
+# Tried and dropped:
+#   - Qwen3-235B-A22B (HF free): 504 timeout — "thinking" mode + long context
+#     too slow.
+#   - gpt-oss-20b (HF free): burns its entire token budget on hidden reasoning
+#     for this prompt and returns empty output, even at max_tokens=8192.
+#   - DeepSeek-R1-Distill-Qwen-32B (HF): not served by any provider on this account.
+#   - mistralai/mistral-nemo (OpenRouter, paid): 429 "rate-limited upstream"
+#     from its backing providers (Parasail, Novita) even with credit — the
+#     cheap price reflects an oversubscribed/unreliable backend.
+#   - OpenRouter's free-tier models (gemma-4-31b-it:free, nemotron-3-super-120b:free,
+#     glm-5.2:free, etc.): share a public pool that gets saturated by other
+#     users — expect intermittent 429s regardless of our own rate limiting.
+MODEL_PRESETS = [
+    {"id": "qwen3-30b-a3b-instruct-openrouter", "label": "Qwen3 30B A3B Instruct (OpenRouter)", "model": "qwen/qwen3-30b-a3b-instruct-2507", "base_url": OPENROUTER_BASE_URL},
+    {"id": "gpt-4.1-mini", "label": "GPT-4.1 mini (OpenAI)", "model": "gpt-4.1-mini", "base_url": ""},
+    {"id": "gemma-3-27b-it", "label": "Gemma 3 27B IT (Hugging Face)", "model": "google/gemma-3-27b-it", "base_url": HF_BASE_URL},
+]
 
 # ---------------------------------------------------------------------------
 # TOSL API

@@ -5,6 +5,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.config import DEFAULT_MODEL, DEFAULT_BASE_URL
+
 load_dotenv()
 
 logging.basicConfig(
@@ -76,17 +78,19 @@ def main():
 
     # LLM configuration
     parser.add_argument(
-        "--model", default="gpt-4.1-mini",
-        help="Model name (default: gpt-4.1-mini)",
+        "--model", default=DEFAULT_MODEL,
+        help=f"Model name (default: {DEFAULT_MODEL})",
     )
     parser.add_argument(
-        "--base-url", default=None,
+        "--base-url", default=DEFAULT_BASE_URL,
         help="Base URL for an OpenAI-compatible server (e.g. http://localhost:8000/v1). "
-             "Works with vLLM, Ollama, LM Studio, and any other compatible server.",
+             f"Defaults to the OpenRouter router ({DEFAULT_BASE_URL}). "
+             "Works with vLLM, Ollama, LM Studio, and any other compatible server. "
+             "Pass an empty string to use OpenAI directly instead.",
     )
     parser.add_argument(
         "--api-key", default=None,
-        help="API key for the model server. Falls back to OPENAI_API_KEY env var. "
+        help="API key for the model server. Falls back to OPENAI_API_KEY or HF_TOKEN env vars. "
              "Not required when using a local server without authentication.",
     )
 
