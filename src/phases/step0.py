@@ -3,6 +3,7 @@ import logging
 
 from langchain_core.language_models import BaseChatModel
 
+from src.io import strip_think
 from src.models import Contract, Clause
 from src.prompts import SPLIT_PROMPT
 
@@ -29,7 +30,7 @@ def split_clauses(contract: Contract, model: BaseChatModel) -> Contract:
 
 
 def _parse_json_array(content: str) -> list[str]:
-    text = content.strip()
+    text = strip_think(content).strip()
     if text.startswith("```"):
         parts = text.split("```")
         text = parts[1].lstrip("json").strip() if len(parts) > 1 else text

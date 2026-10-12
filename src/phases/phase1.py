@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -5,12 +6,16 @@ from pydantic import BaseModel, Field
 from langchain_core.language_models import BaseChatModel
 
 from src.config import ALL_ACTIONS
+from src.llm import structured_output_method
 from src.models import Contract, ClauseMetadata, Clause, ClauseType, Party
 from src.prompts import PHASE1_PROMPT
 
 logger = logging.getLogger(__name__)
 
 _ACTIONS_LIST = ", ".join(f"`{a}`" for a in ALL_ACTIONS)
+# Lowercased → canonical form, so camelCase actions (odrl:obtainConsent,
+# tosl:allowDownload...) still match after normalising the LLM's casing.
+_CANONICAL_ACTIONS = {a.lower(): a for a in ALL_ACTIONS}
 
 
 class _LLMResult(BaseModel):
@@ -40,8 +45,18 @@ def placeholder_metadata(contract: Contract) -> list[ClauseMetadata]:
     ]
 
 
-def extract_metadata(contract: Contract, model: BaseChatModel, max_workers: int = 4) -> list[ClauseMetadata]:
-    chain = PHASE1_PROMPT.partial(actions_list=_ACTIONS_LIST) | model.with_structured_output(_LLMResult)
+def extract_metadata(
+    contract: Contract,
+    model: BaseChatModel,
+    max_workers: int = 4,
+    on_progress: Callable[[int], None] | None = None,
+) -> list[ClauseMetadata]:
+    # Some providers (ALMA) don't support OpenAI tool calling, which
+    # `with_structured_output` relies on by default — use the method that
+    # provider does support instead (see `structured_output_method`).
+    method = structured_output_method(getattr(model, "openai_api_base", None))
+    structured_model = model.with_structured_output(_LLMResult, method=method) if method else model.with_structured_output(_LLMResult)
+    chain = PHASE1_PROMPT.partial(actions_list=_ACTIONS_LIST) | structured_model
     results: list[ClauseMetadata | None] = [None] * len(contract.clauses)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -57,6 +72,8 @@ def extract_metadata(contract: Contract, model: BaseChatModel, max_workers: int 
                 logger.info("Phase 1 done: %s → %s", clause.id, results[i].type)
             except Exception as exc:
                 logger.error("Phase 1 failed for %s: %s", clause.id, exc)
+            if on_progress:
+                on_progress(sum(r is not None for r in results))
 
     return [r for r in results if r is not None]
 
@@ -64,9 +81,10 @@ def extract_metadata(contract: Contract, model: BaseChatModel, max_workers: int 
 def _process_clause(chain, clause: Clause) -> ClauseMetadata:
     llm_result: _LLMResult = chain.invoke({"clause": clause.text})
 
-    action = llm_result.action.strip().lower()
-    if action not in ALL_ACTIONS:
-        logger.warning("Unknown action '%s' for %s — defaulting to 'unspecified'", action, clause.id)
+    raw_action = llm_result.action.strip()
+    action = _CANONICAL_ACTIONS.get(raw_action.lower())
+    if action is None:
+        logger.warning("Unknown action '%s' for %s — defaulting to 'unspecified'", raw_action, clause.id)
         action = "unspecified"
 
     return ClauseMetadata(

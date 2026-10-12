@@ -4,6 +4,7 @@
 
 HF_BASE_URL = "https://router.huggingface.co/v1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+ALMA_QWEN_FULL_BASE_URL = "https://alma.us.es/api/models/qwen3.8-27b/v1"
 DEFAULT_MODEL = "qwen/qwen3-30b-a3b-instruct-2507"
 DEFAULT_BASE_URL = OPENROUTER_BASE_URL
 DEFAULT_TEMPERATURE = 0
@@ -15,9 +16,14 @@ MAX_REPAIR_ROUNDS = 3
 # The first entry is what the frontend pre-selects (matches DEFAULT_MODEL).
 #
 # Only models CONFIRMED WORKING end-to-end against the real Phase 2 prompt
-# (long ontology + guidelines context, ~14.5k tokens) are listed here.
+# (long ontology + guidelines context, ~14.5k tokens) are listed here —
+# EXCEPT the ALMA entry below, marked "(experimental)": Phase 1 and Phase 2
+# work on sample clauses, but no full contract has run end-to-end yet. Drop
+# the label only once that's done.
 #
 # Tried and dropped:
+#   - sokada4/Qwen3.8-27B-GPTQ-Int4 (ALMA): 16384-token window, and the Phase 2
+#     prompt alone measures 15634 tokens, leaving ~750 for reasoning + Turtle.
 #   - Qwen3-235B-A22B (HF free): 504 timeout — "thinking" mode + long context
 #     too slow.
 #   - gpt-oss-20b (HF free): burns its entire token budget on hidden reasoning
@@ -33,6 +39,7 @@ MODEL_PRESETS = [
     {"id": "qwen3-30b-a3b-instruct-openrouter", "label": "Qwen3 30B A3B Instruct (OpenRouter)", "model": "qwen/qwen3-30b-a3b-instruct-2507", "base_url": OPENROUTER_BASE_URL},
     {"id": "gpt-4.1-mini", "label": "GPT-4.1 mini (OpenAI)", "model": "gpt-4.1-mini", "base_url": ""},
     {"id": "gemma-3-27b-it", "label": "Gemma 3 27B IT (Hugging Face)", "model": "google/gemma-3-27b-it", "base_url": HF_BASE_URL},
+    {"id": "alma-qwen3.8-27b", "label": "Qwen3.8 27B (ALMA, experimental)", "model": "Qwen/Qwen3.8-27B", "base_url": ALMA_QWEN_FULL_BASE_URL},
 ]
 
 # ---------------------------------------------------------------------------

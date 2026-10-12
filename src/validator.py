@@ -61,6 +61,14 @@ def validate(ttl: str) -> ValidationReport:
     response.raise_for_status()
     data = response.json()
 
+    # Unparseable Turtle comes back as {"syntax_valid": false, "syntax_error": ...}
+    # with no violations list; surface it as one so Phase III knows what to repair.
+    if data.get("syntax_valid") is False:
+        return ValidationReport(
+            conforms=False,
+            violations=[ValidationViolation(message=f"Turtle syntax error: {data.get('syntax_error', 'unknown')}")],
+        )
+
     conforms = bool(data.get("conforms") or data.get("valid"))
     violations = [
         ValidationViolation(

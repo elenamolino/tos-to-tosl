@@ -1,8 +1,18 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from src.models import Contract, Clause
+
+# Reasoning models (Qwen3 on ALMA, DeepSeek-R1-distill...) prepend a
+# "thinking" block before the real answer. Strip it before looking for the
+# TTL/fence so it doesn't get mistaken for (or hide) the actual output.
+_THINK_BLOCK = re.compile(r"^\s*<think>.*?</think>\s*", re.DOTALL)
+
+
+def strip_think(text: str) -> str:
+    return _THINK_BLOCK.sub("", text, count=1)
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +37,7 @@ def load_pdf(path: str | Path) -> str:
 
 def extract_ttl_block(text: str) -> str:
     """Extract Turtle content from a fenced code block or raw Turtle output."""
+    text = strip_think(text)
     for tag in ("```ttl", "```turtle", "```"):
         start = text.find(tag)
         if start != -1:

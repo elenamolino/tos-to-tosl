@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,6 +20,7 @@ def validate_and_repair(
     model: BaseChatModel,
     max_repair_rounds: int = MAX_REPAIR_ROUNDS,
     max_workers: int = 4,
+    on_progress: Callable[[int], None] | None = None,
 ) -> list[CorrectedTurtle]:
     chain = PHASE3_REPAIR_PROMPT | model
     results: list[CorrectedTurtle | None] = [None] * len(turtle_outputs)
@@ -38,6 +40,8 @@ def validate_and_repair(
                 logger.info("Phase 3 done: %s — %s (rounds: %d)", output.clause_id, status, r.repair_rounds)
             except Exception as exc:
                 logger.error("Phase 3 failed for %s: %s", output.clause_id, exc)
+            if on_progress:
+                on_progress(sum(r is not None for r in results))
 
     return [r for r in results if r is not None]
 
