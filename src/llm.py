@@ -12,16 +12,59 @@ logger = logging.getLogger(__name__)
 _PROVIDER_TOKEN_ENV = {
     "huggingface.co": "HF_TOKEN",
     "openrouter.ai": "OPENROUTER_API_KEY",
+    "alma.us.es": "ALMA_API_KEY",
 }
 
-# Maps a substring of base_url to that provider's free-tier request limits, so
-# we throttle client-side and never actually hit their limit (which risks a
-# temporary ban rather than just a slow/failed request). Kept below OpenRouter's
-# stated free-tier limit (20/min, 50/day) — pacing exactly AT the real limit
-# means any timing jitter between our clock and theirs still trips it.
+# Maps a substring of base_url to that provider's request limits, so we
+# throttle client-side and never actually hit their limit (which risks a
+# temporary ban rather than just a slow/failed request). `free_tier_only` means
+# the limit only applies to free-tier models (OpenRouter's ":free" suffix) —
+# ALMA's pilot quota (15 req/min per model, per user) applies to every request
+# regardless of model name, so it has no such suffix to key off.
+# OpenRouter is kept below its stated free-tier limit (20/min, 50/day) —
+# pacing exactly AT the real limit means any timing jitter between our clock
+# and theirs still trips it. ALMA's is paced at their exact stated limit since
+# it's not a shared/banned-on-abuse free tier, just a per-user pilot quota.
 _PROVIDER_RATE_LIMITS = {
-    "openrouter.ai": {"requests_per_minute": 15, "requests_per_day": 40},
+    "openrouter.ai": {"requests_per_minute": 15, "requests_per_day": 40, "free_tier_only": True},
+    "alma.us.es": {"requests_per_minute": 15, "requests_per_day": 10_000, "free_tier_only": False},
 }
+
+# Maps a substring of base_url to the `with_structured_output` method to use.
+# LangChain's default ("function_calling") needs the server to support OpenAI
+# tool calling (vLLM needs --tool-call-parser for that), which ALMA's
+# deployment doesn't have. Plain "json_mode" doesn't work either: vLLM's guided
+# decoding forces JSON from the first token, so Qwen3 can't open its <think>
+# block and just emits "{}" (2 completion tokens) on many clauses.
+# "json_schema" constrains the output to the actual fields instead, and
+# answered correctly in ~1.6s per clause in manual tests.
+_PROVIDER_STRUCTURED_OUTPUT_METHOD = {
+    "alma.us.es": "json_schema",
+}
+
+# Providers in this set never get an explicit max_tokens, so vLLM gives the
+# completion whatever is left of the context window after the prompt. ALMA's
+# models have small windows (32768 for Qwen3.8-27B) and the Phase 2 prompt
+# alone is ~15.6k tokens (ontology + guidelines), so any fixed value either
+# overflows the window (400 error) or cuts the reasoning short.
+_PROVIDER_OMIT_MAX_TOKENS = {"alma.us.es"}
+
+# Providers in this set are always called with streaming. ALMA's nginx proxy
+# returns 504 on any request that takes over 60s without sending data, and a
+# Phase 2 call with reasoning takes ~90s; streaming keeps the connection busy.
+_PROVIDER_STREAMING = {"alma.us.es"}
+
+
+def structured_output_method(base_url: str | None) -> str | None:
+    """`with_structured_output(..., method=...)` override for `base_url`'s provider,
+    or None to keep LangChain's default (function calling)."""
+    if not base_url:
+        return None
+    return next((v for host, v in _PROVIDER_STRUCTURED_OUTPUT_METHOD.items() if host in base_url), None)
+
+
+_RATE_LIMITERS: dict[tuple[str, str], "_DailyCappedRateLimiter"] = {}
+_RATE_LIMITERS_LOCK = threading.Lock()
 
 
 class _DailyCappedRateLimiter(BaseRateLimiter):
@@ -93,26 +136,38 @@ def build_model(
 
     kwargs: dict = {"model": model_name, "temperature": temperature, "api_key": resolved_key}
     if base_url:
-        # Only throttle actual free-tier models (OpenRouter's ":free" suffix) —
-        # paid requests aren't subject to that shared-pool limit and shouldn't
-        # be slowed down by a cap that doesn't apply to them.
+        # Only throttle a provider's *free-tier* models (OpenRouter's ":free"
+        # suffix) when that provider's limit is free-tier-only — paid requests
+        # there aren't subject to that shared-pool limit. A provider whose
+        # limit applies to every request regardless of model name (ALMA) is
+        # throttled unconditionally.
+        matched = next((v for host, v in _PROVIDER_RATE_LIMITS.items() if host in base_url), None)
         limits = (
-            next((v for host, v in _PROVIDER_RATE_LIMITS.items() if host in base_url), None)
-            if model_name.endswith(":free")
+            matched
+            if matched and (not matched["free_tier_only"] or model_name.endswith(":free"))
             else None
         )
         if limits:
-            kwargs["rate_limiter"] = _DailyCappedRateLimiter(
-                requests_per_minute=limits["requests_per_minute"],
-                requests_per_day=limits["requests_per_day"],
-                provider_name=base_url,
-            )
-    if max_tokens:
+            # Shared across every model built for the same endpoint, so
+            # concurrent jobs together stay under the provider's limit.
+            with _RATE_LIMITERS_LOCK:
+                key = (base_url, model_name)
+                if key not in _RATE_LIMITERS:
+                    _RATE_LIMITERS[key] = _DailyCappedRateLimiter(
+                        requests_per_minute=limits["requests_per_minute"],
+                        requests_per_day=limits["requests_per_day"],
+                        provider_name=base_url,
+                    )
+                kwargs["rate_limiter"] = _RATE_LIMITERS[key]
+    omit_max_tokens = bool(base_url) and any(host in base_url for host in _PROVIDER_OMIT_MAX_TOKENS)
+    if max_tokens and not omit_max_tokens:
         # Reasoning models (Qwen3, gpt-oss, DeepSeek-R1-distill...) spend part of
         # this budget on hidden "thinking" tokens before the real answer — the
         # provider default (often 2048) can be fully consumed by reasoning alone,
         # leaving an empty response. Give enough headroom for both.
         kwargs["max_tokens"] = max_tokens
+    if base_url and any(host in base_url for host in _PROVIDER_STREAMING):
+        kwargs["streaming"] = True
     if base_url:
         kwargs["base_url"] = base_url
         logger.info("LLM → %s | model: %s", base_url, model_name)

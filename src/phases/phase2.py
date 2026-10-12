@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -17,6 +18,7 @@ def generate_turtle(
     guidelines: str,
     model: BaseChatModel,
     max_workers: int = 4,
+    on_progress: Callable[[int], None] | None = None,
 ) -> list[TurtleOutput]:
     shared = {
         "ontology": ontology,
@@ -42,6 +44,8 @@ def generate_turtle(
                 logger.info("Phase 2 done: %s", meta.clause_id)
             except Exception as exc:
                 logger.error("Phase 2 failed for %s: %s", meta.clause_id, exc)
+            if on_progress:
+                on_progress(sum(r is not None for r in results))
 
     return [r for r in results if r is not None]
 

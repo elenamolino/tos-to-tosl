@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -5,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
+from src.io import strip_think
 from src.models import CorrectedTurtle, EvaluationResult
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,7 @@ def evaluate_semantic(
     eval_model: BaseChatModel | None = None,
     embed_model: str = "text-embedding-3-small",
     max_workers: int = 4,
+    on_progress: Callable[[int], None] | None = None,
 ) -> list[EvaluationResult]:
     """Back-translate each TTL to NL and compute semantic similarity vs original clause text.
 
@@ -69,13 +72,15 @@ def evaluate_semantic(
                 )
             except Exception as exc:
                 logger.error("Evaluation failed for %s: %s", output.clause_id, exc)
+            if on_progress:
+                on_progress(sum(r is not None for r in results))
 
     return [r for r in results if r is not None]
 
 
 def _process_clause(output: CorrectedTurtle, model: BaseChatModel, embeddings) -> EvaluationResult:
     response = model.invoke([HumanMessage(content=_TTL_TO_NL_PROMPT.format(ttl=output.ttl))])
-    back_translated = response.content.strip()
+    back_translated = strip_think(response.content).strip()
 
     gen_emb = embeddings.embed_query(back_translated)
     ref_emb = embeddings.embed_query(output.clause_text)

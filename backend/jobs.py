@@ -113,6 +113,10 @@ def run_pipeline_background(job: Job, params: dict) -> None:
     thread.start()
 
 
+def _progress(job: Job, step: str, total: int):
+    return lambda done: job.set_step(step, StepStatus.RUNNING, done=done, total=total)
+
+
 def _run(job: Job, params: dict) -> None:
     from src.io import load_contract_from_json, load_contract_from_text, load_text
     from src.llm import build_model
@@ -144,7 +148,10 @@ def _run(job: Job, params: dict) -> None:
         # ── Phase 1: metadata extraction ───────────────────────────────────────
         if run_phase1:
             job.set_step("phase1", StepStatus.RUNNING, total=n)
-            metadata_list = phase1.extract_metadata(split_contract, model, max_workers=max_workers)
+            metadata_list = phase1.extract_metadata(
+                split_contract, model, max_workers=max_workers,
+                on_progress=_progress(job, "phase1", n),
+            )
             job.set_step("phase1", StepStatus.DONE, done=len(metadata_list), total=n)
         else:
             metadata_list = phase1.placeholder_metadata(split_contract)
@@ -153,7 +160,8 @@ def _run(job: Job, params: dict) -> None:
         # ── Phase 2: Turtle generation ─────────────────────────────────────────
         job.set_step("phase2", StepStatus.RUNNING, total=len(metadata_list))
         turtle_outputs = phase2.generate_turtle(
-            metadata_list, split_contract, ontology, guidelines, model, max_workers=max_workers
+            metadata_list, split_contract, ontology, guidelines, model, max_workers=max_workers,
+            on_progress=_progress(job, "phase2", len(metadata_list)),
         )
         job.set_step("phase2", StepStatus.DONE, done=len(turtle_outputs), total=len(metadata_list))
 
@@ -162,12 +170,16 @@ def _run(job: Job, params: dict) -> None:
         corrected = phase3.validate_and_repair(
             turtle_outputs, guidelines, model,
             max_repair_rounds=max_repair, max_workers=max_workers,
+            on_progress=_progress(job, "phase3", len(turtle_outputs)),
         )
         job.set_step("phase3", StepStatus.DONE, done=len(corrected), total=len(turtle_outputs))
 
         # ── Analysis: deontic + unfair terms ───────────────────────────────────
         job.set_step("analysis", StepStatus.RUNNING, total=len(corrected))
-        analysis_results = analysis.analyze(corrected, max_workers=max_workers)
+        analysis_results = analysis.analyze(
+            corrected, max_workers=max_workers,
+            on_progress=_progress(job, "analysis", len(corrected)),
+        )
         job.set_step("analysis", StepStatus.DONE, done=len(analysis_results), total=len(corrected))
 
         # ── Evaluation: semantic back-translation ──────────────────────────────
@@ -181,6 +193,7 @@ def _run(job: Job, params: dict) -> None:
                 eval_model=eval_model,
                 embed_model=params.get("embed_model", "text-embedding-3-small"),
                 max_workers=max_workers,
+                on_progress=_progress(job, "evaluation", len(corrected)),
             )
             job.set_step("evaluation", StepStatus.DONE, done=len(evaluation_results), total=len(corrected))
 

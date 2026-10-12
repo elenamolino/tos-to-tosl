@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 def analyze(
     corrected_outputs: list[CorrectedTurtle],
     max_workers: int = 6,
+    on_progress: Callable[[int], None] | None = None,
 ) -> list[ClauseAnalysis]:
     """Run deontic and unfair-terms SPARQL queries for each corrected Turtle.
 
@@ -32,6 +34,8 @@ def analyze(
                 logger.info("Analysis done: %s", output.clause_id)
             except Exception as exc:
                 logger.error("Analysis failed for %s: %s", output.clause_id, exc)
+            if on_progress:
+                on_progress(sum(r is not None for r in results))
 
     return [r for r in results if r is not None]
 
